@@ -15,7 +15,7 @@
 ### 从 GitHub 安装
 
 ```bash
-pip install git+https://github.com/yourusername/wechat-sdk.git
+pip install git+https://github.com/penxxy/wechat-sdk.git
 ```
 
 ### 从 PyPI 安装（如果已发布）

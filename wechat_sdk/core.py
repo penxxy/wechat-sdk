@@ -80,10 +80,20 @@ class WeChatPublisher:
             html_imgs = []
             original_img_paths = []
             for src in extract_html_images(html):
-                uploaded_url = self.upload_image(os.path.join(base_dir, src))
+                # 判断是HTTP URL还是本地路径
+                if src.startswith("http"):
+                    # HTTP URL直接使用
+                    image_path = src
+                    original_path = src
+                else:
+                    # 本地路径需要和base_dir拼接
+                    image_path = os.path.join(base_dir, src)
+                    original_path = os.path.join(base_dir, src)
+                
+                uploaded_url = self.upload_image(image_path)
                 html = html.replace(src, uploaded_url)
                 html_imgs.append(uploaded_url)
-                original_img_paths.append(os.path.join(base_dir, src))
+                original_img_paths.append(original_path)
             thumb_id = art.get("thumb_media_id")
             if not thumb_id and original_img_paths:
                 # 使用原始图片路径而不是上传后的URL
