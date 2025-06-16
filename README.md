@@ -29,7 +29,7 @@ pip install wechat-sdk
 ### 基本使用
 
 ```python
-from wechat_sdk import WeChatPublisher
+from wechat_sdk import WeChatPublisher, Article
 
 # 初始化发布器
 publisher = WeChatPublisher(
@@ -38,11 +38,12 @@ publisher = WeChatPublisher(
 )
 
 # 创建文章
-articles = [{
+articles: list[Article] = [{
     "title": "我的第一篇文章",
     "content": "这是文章内容",
     "type": "html",  # 或 "markdown"
-    "author": "作者名"
+    "author": "作者名",
+    "thumb_media_id": None  # 可选，封面图片ID
 }]
 
 # 创建草稿
@@ -72,12 +73,14 @@ image_url = publisher.upload_image("https://example.com/image.jpg")
 文章对象支持以下字段：
 
 ```python
-article = {
-    "title": "文章标题",           # 必填
-    "content": "文章内容",         # 必填
+from wechat_sdk import Article
+
+article: Article = {
+    "title": "文章标题",           # 必填：字符串
+    "content": "文章内容",         # 必填：字符串
     "type": "html",              # 必填: "html" 或 "markdown"
-    "author": "作者名",           # 可选
-    "thumb_media_id": "封面ID",   # 可选
+    "author": "作者名",           # 必填：字符串
+    "thumb_media_id": None,      # 可选：封面图片ID，字符串或None
 }
 ```
 
@@ -88,16 +91,6 @@ article = {
 3. 图片大小建议小于2MB，支持 jpg、png 格式
 4. Access Token 会自动缓存，有效期7200秒
 
-## 错误处理
-
-```python
-from wechat_sdk.exceptions import WeChatSDKException
-
-try:
-    media_id = publisher.create_draft_from_articles(articles)
-except WeChatSDKException as e:
-    print(f"发布失败: {e}")
-```
 
 ## 许可证
 

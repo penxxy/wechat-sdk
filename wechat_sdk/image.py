@@ -3,13 +3,14 @@ from PIL import Image
 from io import BytesIO
 import os
 from urllib.parse import urlparse
-from .exceptions import WeChatSDKException
+
 
 def download_image(url: str) -> BytesIO:
     resp = requests.get(url)
     if resp.status_code != 200:
-        raise WeChatSDKException(f"Failed to download image: {url}")
+        raise Exception(f"Failed to download image: {url}")
     return BytesIO(resp.content)
+
 
 def process_image(image: BytesIO, max_size: int = 10 * 1024 * 1024) -> tuple[BytesIO, str] | None:
     """
@@ -84,6 +85,7 @@ def process_image(image: BytesIO, max_size: int = 10 * 1024 * 1024) -> tuple[Byt
     except Exception:
         # 如果任何步骤失败，返回None表示这不是有效图片
         return None
+
 
 def get_filename_from_url(url: str) -> str:
     filename = os.path.basename(urlparse(url).path)
