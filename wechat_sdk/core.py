@@ -11,7 +11,7 @@ import requests
 from typing import List
 from io import BytesIO
 from .article_types import Article
-from .image import download_image, compress_image, get_filename_from_url
+from .image import download_image, process_image, get_filename_from_url
 from .markdown_utils import extract_markdown_images
 from .html_utils import extract_html_images
 from .exceptions import WeChatSDKException
@@ -47,22 +47,46 @@ class WeChatPublisher:
             f.write(f"{self._access_token},{self._token_expires_at}")
         return self._access_token
 
-    def upload_image(self, path_or_url: str) -> str:
-        if path_or_url.startswith("http"):
-            stream = download_image(path_or_url)
-            filename = get_filename_from_url(path_or_url)
-        else:
-            with open(path_or_url, "rb") as f:
-                stream = BytesIO(f.read())
-            filename = os.path.basename(path_or_url)
-        compressed = compress_image(stream)
-        url = f"{self.BASE_URL}/media/uploadimg?access_token={self.get_access_token()}"
-        files = {"media": (filename, compressed)}
-        resp = requests.post(url, files=files)
-        data = resp.json()
-        if "url" not in data:
-            raise WeChatSDKException(f"Upload image failed: {data}")
-        return data["url"]
+    def upload_image(self, path_or_url: str) -> str | None:
+        try:
+            # 1. 读取图片文件
+            if path_or_url.startswith("http"):
+                stream = download_image(path_or_url)
+                original_filename = get_filename_from_url(path_or_url)
+            else:
+                if not os.path.exists(path_or_url):
+                    return None
+                with open(path_or_url, "rb") as f:
+                    content = f.read()
+                    if len(content) == 0:
+                        return None
+                    stream = BytesIO(content)
+                original_filename = os.path.basename(path_or_url)
+            
+            # 2. 处理图片（格式转换和压缩）
+            result = process_image(stream)
+            if result is None:
+                # 不是有效图片，跳过
+                return None
+            
+            processed_image, ext = result
+            
+            # 3. 生成最终文件名
+            name = os.path.splitext(original_filename)[0]
+            final_filename = f"{name}.{ext}"
+            
+            # 4. 上传到微信
+            url = f"{self.BASE_URL}/media/uploadimg?access_token={self.get_access_token()}"
+            files = {"media": (final_filename, processed_image)}
+            resp = requests.post(url, files=files)
+            data = resp.json()
+            if "url" not in data:
+                return None
+            return data["url"]
+            
+        except Exception:
+            # 任何异常都返回None，跳过这个图片
+            return None
 
     def create_draft_from_articles(self, articles: List[Article], base_dir=".") -> str:
         payload = []
@@ -71,12 +95,7 @@ class WeChatPublisher:
             if art["type"] == "markdown":
                 import markdown
                 html = markdown.markdown(html)
-            # if art["type"] == "markdown":
-            #     imgs = extract_markdown_images(art["content"])
-            #     html_imgs = [self.upload_image(os.path.join(base_dir, path)) for _, path in imgs]
-            #     # 保存原始图片路径用于封面
-            #     original_img_paths = [os.path.join(base_dir, path) for _, path in imgs]
-            # else:
+                
             html_imgs = []
             original_img_paths = []
             for src in extract_html_images(html):
@@ -91,16 +110,18 @@ class WeChatPublisher:
                     original_path = os.path.join(base_dir, src)
                 
                 uploaded_url = self.upload_image(image_path)
-                html = html.replace(src, uploaded_url)
-                html_imgs.append(uploaded_url)
-                original_img_paths.append(original_path)
+                if uploaded_url:  # 只有上传成功才替换
+                    html = html.replace(src, uploaded_url)
+                    html_imgs.append(uploaded_url)
+                    original_img_paths.append(original_path)
+                # 如果上传失败，跳过这个图片，HTML中保持原样
             thumb_id = art.get("thumb_media_id")
             if not thumb_id and original_img_paths:
                 # 使用原始图片路径而不是上传后的URL
                 thumb_id = self._upload_image_to_media_id(original_img_paths[0])
             
             # 确保thumb_media_id不为None，微信API不接受None值
-            if thumb_id is None:
+            if not thumb_id:
                 thumb_id = ""
             
             payload.append({
@@ -127,36 +148,48 @@ class WeChatPublisher:
             raise WeChatSDKException(f"Create draft failed: {data}")
         return data["media_id"]
 
-    def _upload_image_to_media_id(self, image_path_or_url: str) -> str:
+    def _upload_image_to_media_id(self, image_path_or_url: str) -> str | None:
         """
         上传图片到微信服务器获取永久素材media_id
         用于草稿封面图片，必须使用永久素材接口而不是临时素材接口
         """
-        if image_path_or_url.startswith("http"):
-            # 处理URL
-            stream = download_image(image_path_or_url)
-            filename = get_filename_from_url(image_path_or_url)
-        else:
-            # 处理本地文件
-            if not os.path.exists(image_path_or_url):
-                raise WeChatSDKException(f"Image file not found: {image_path_or_url}")
+        try:
+            # 1. 读取图片文件
+            if image_path_or_url.startswith("http"):
+                stream = download_image(image_path_or_url)
+                original_filename = get_filename_from_url(image_path_or_url)
+            else:
+                if not os.path.exists(image_path_or_url):
+                    return None
+                with open(image_path_or_url, "rb") as f:
+                    content = f.read()
+                    if len(content) == 0:
+                        return None
+                    stream = BytesIO(content)
+                original_filename = os.path.basename(image_path_or_url)
             
-            with open(image_path_or_url, "rb") as f:
-                stream = BytesIO(f.read())
+            # 2. 处理图片（格式转换和压缩）
+            result = process_image(stream)
+            if result is None:
+                # 不是有效图片，跳过
+                return None
             
-            # 确保文件名有正确的扩展名
-            filename = os.path.basename(image_path_or_url)
-            name, ext = os.path.splitext(filename)
-            filename = f"{name}.jpg"  # 统一使用jpg扩展名
-        
-        # 压缩图片
-        compressed = compress_image(stream)
-        
-        # 关键修复：使用永久素材接口而不是临时素材接口
-        url = f"{self.BASE_URL}/material/add_material?access_token={self.get_access_token()}&type=image"
-        files = {"media": (filename, compressed, "image/jpeg")}  # 明确指定MIME类型
-        resp = requests.post(url, files=files)
-        data = resp.json()
-        if "media_id" not in data:
-            raise WeChatSDKException(f"Upload cover failed: {data}")
-        return data["media_id"]
+            processed_image, ext = result
+            
+            # 3. 生成最终文件名
+            name = os.path.splitext(original_filename)[0]
+            final_filename = f"{name}.{ext}"
+            
+            # 4. 上传到微信永久素材接口
+            url = f"{self.BASE_URL}/material/add_material?access_token={self.get_access_token()}&type=image"
+            mime_type = "image/png" if ext == "png" else "image/jpeg"
+            files = {"media": (final_filename, processed_image, mime_type)}
+            resp = requests.post(url, files=files)
+            data = resp.json()
+            if "media_id" not in data:
+                return None
+            return data["media_id"]
+            
+        except Exception:
+            # 任何异常都返回None，跳过这个图片
+            return None

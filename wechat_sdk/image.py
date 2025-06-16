@@ -11,104 +11,79 @@ def download_image(url: str) -> BytesIO:
         raise WeChatSDKException(f"Failed to download image: {url}")
     return BytesIO(resp.content)
 
-def compress_image(image: BytesIO, max_size: int = 1 * 1024 * 1024) -> BytesIO:
+def process_image(image: BytesIO, max_size: int = 10 * 1024 * 1024) -> tuple[BytesIO, str] | None:
     """
-    压缩图片并确保格式符合微信要求
-    微信支持的图片格式：JPG, PNG
+    处理图片：检查格式、转换格式、压缩大小
+    微信支持格式：bmp/png/jpeg/jpg/gif，大小限制10M
+    返回：(处理后的图片BytesIO, 文件扩展名) 或 None（如果不是有效图片）
     """
     try:
-        # 确保BytesIO指针在开始位置
         image.seek(0)
+        img = Image.open(image)
         
-        # 检查BytesIO是否有内容
-        if image.tell() == len(image.getvalue()):
+        # 验证图片是否有效
+        img.verify()
+        # 重新打开图片，因为verify()后图片对象不能再使用
+        image.seek(0)
+        img = Image.open(image)
+        
+        # 获取原始格式
+        original_format = img.format
+        if not original_format:
+            return None
+        
+        # 检查图片大小是否需要压缩
+        image.seek(0)
+        original_size = len(image.getvalue())
+        
+        # 如果原图小于10M且格式支持，直接返回
+        if original_size <= max_size and original_format in ['BMP', 'PNG', 'JPEG', 'GIF']:
             image.seek(0)
+            ext = 'jpg' if original_format == 'JPEG' else original_format.lower()
+            return image, ext
         
-        # 尝试打开图片
-        try:
-            img = Image.open(image)
-            # 验证图片是否有效
-            img.verify()
-            # 重新打开图片，因为verify()后图片对象不能再使用
-            image.seek(0)
-            img = Image.open(image)
-        except Exception as e:
-            raise WeChatSDKException(f"无法识别图片格式或图片已损坏: {e}")
-        
-        # 转换为RGB模式以确保兼容性
-        try:
-            if img.mode in ('RGBA', 'LA', 'P'):
-                # 对于有透明度的图片，创建白色背景
-                background = Image.new('RGB', img.size, (255, 255, 255))
-                if img.mode == 'P':
-                    img = img.convert('RGBA')
-                background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
-                img = background
-            elif img.mode != 'RGB':
+        # 需要转换格式或压缩大小
+        # 对于有透明度的图片，转为PNG；其他转为JPEG
+        if img.mode in ('RGBA', 'LA') or original_format == 'PNG':
+            output_format = 'PNG'
+            ext = 'png'
+            output = BytesIO()
+            img.save(output, format='PNG', optimize=True)
+        else:
+            output_format = 'JPEG'
+            ext = 'jpg'
+            # 转换为RGB模式
+            if img.mode != 'RGB':
                 img = img.convert('RGB')
-        except Exception as e:
-            raise WeChatSDKException(f"图片格式转换失败: {e}")
-        
-        # 第一次压缩尝试
-        try:
             output = BytesIO()
             img.save(output, format='JPEG', optimize=True, quality=85)
-            
-            # 如果文件太大，降低质量
-            if output.tell() > max_size:
-                output = BytesIO()
-                img.save(output, format='JPEG', optimize=True, quality=75)
+        
+        # 如果还是太大，进行压缩
+        if output.tell() > max_size and output_format == 'JPEG':
+            # 降低质量
+            output = BytesIO()
+            img.save(output, format='JPEG', optimize=True, quality=75)
             
             # 如果还是太大，调整尺寸
             if output.tell() > max_size:
-                try:
-                    # 计算新尺寸
-                    width, height = img.size
-                    if width <= 0 or height <= 0:
-                        raise WeChatSDKException("图片尺寸无效")
-                    
-                    ratio = (max_size / output.tell()) ** 0.5
-                    new_width = max(1, int(width * ratio))
-                    new_height = max(1, int(height * ratio))
-                    
-                    img_resized = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-                    output = BytesIO()
-                    img_resized.save(output, format='JPEG', optimize=True, quality=75)
-                    
-                    # 如果调整尺寸后还是太大，进一步降低质量
-                    if output.tell() > max_size:
-                        output = BytesIO()
-                        img_resized.save(output, format='JPEG', optimize=True, quality=50)
-                    
-                except Exception as e:
-                    raise WeChatSDKException(f"图片尺寸调整失败: {e}")
-            
-            # 最终检查
-            if output.tell() == 0:
-                raise WeChatSDKException("压缩后的图片为空")
-            
-            output.seek(0)
-            return output
-            
-        except Exception as e:
-            if isinstance(e, WeChatSDKException):
-                raise
-            raise WeChatSDKException(f"图片压缩保存失败: {e}")
-    
-    except WeChatSDKException:
-        raise
-    except Exception as e:
-        # 最后的回退：如果所有压缩都失败，尝试直接返回原图片
-        try:
-            image.seek(0)
-            original_size = len(image.getvalue())
-            if original_size <= max_size:
-                image.seek(0)
-                return image
-            else:
-                raise WeChatSDKException(f"图片压缩失败，原图过大({original_size} bytes > {max_size} bytes): {e}")
-        except Exception:
-            raise WeChatSDKException(f"图片处理完全失败: {e}")
+                width, height = img.size
+                if width <= 0 or height <= 0:
+                    return None
+                ratio = (max_size / output.tell()) ** 0.5
+                new_width = int(width * ratio)
+                new_height = int(height * ratio)
+                if new_width <= 0 or new_height <= 0:
+                    return None
+                img_resized = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                output = BytesIO()
+                img_resized.save(output, format='JPEG', optimize=True, quality=75)
+        
+        output.seek(0)
+        return output, ext
+        
+    except Exception:
+        # 如果任何步骤失败，返回None表示这不是有效图片
+        return None
 
 def get_filename_from_url(url: str) -> str:
     filename = os.path.basename(urlparse(url).path)
@@ -116,6 +91,7 @@ def get_filename_from_url(url: str) -> str:
     if not filename or '.' not in filename:
         return 'image.jpg'
     
-    # 将扩展名统一为jpg
-    name, ext = os.path.splitext(filename)
-    return f"{name}.jpg"
+    # 保持原始扩展名，不强制转换
+    return filename
+
+
