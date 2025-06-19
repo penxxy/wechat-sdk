@@ -1,4 +1,4 @@
-# WeChat SDK
+# WeChat Publisher
 
 一个简单易用的微信公众号开发 Python SDK，支持文章发布、图片上传、草稿管理等功能。
 
@@ -12,16 +12,16 @@
 
 ## 安装
 
+### 从 PyPI 安装
+
+```bash
+pip install wechat-publisher
+```
+
 ### 从 GitHub 安装
 
 ```bash
-pip install git+https://github.com/penxxy/wechat-sdk.git
-```
-
-### 从 PyPI 安装（如果已发布）
-
-```bash
-pip install wechat-sdk
+pip install git+https://github.com/penxxy/wechat-publisher.git
 ```
 
 ## 使用方法
@@ -29,7 +29,7 @@ pip install wechat-sdk
 ### 基本使用
 
 ```python
-from wechat_sdk import WeChatPublisher, Article
+from wechat_publisher import WeChatPublisher, Article
 
 # 初始化发布器
 publisher = WeChatPublisher(
@@ -73,7 +73,7 @@ image_url = publisher.upload_image("https://example.com/image.jpg")
 文章对象支持以下字段：
 
 ```python
-from wechat_sdk import Article
+from wechat_publisher import Article
 
 article: Article = {
     "title": "文章标题",           # 必填：字符串

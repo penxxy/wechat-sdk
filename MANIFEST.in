@@ -1,6 +1,6 @@
 include README.md
 include requirements.txt
 include LICENSE
-recursive-include wechat_sdk *.py
+recursive-include wechat_publisher *.py
 recursive-exclude * __pycache__
 recursive-exclude * *.py[co] 

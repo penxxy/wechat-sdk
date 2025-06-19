@@ -1,2 +1,0 @@
-class WeChatSDKException(Exception):
-    pass

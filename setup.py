@@ -4,15 +4,15 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name="wechat-sdk",
-    version="0.1.0",
+    name="wechat-publisher",
+    version="0.1.1",
     author="penxxy",
     author_email="mkhu3638@gmail.com",
     description="微信公众号开发 SDK - 支持文章发布、图片上传等功能",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/penxxy/wechat-sdk",
-    packages=["wechat_sdk"],
+    url="https://github.com/penxxy/wechat-publisher",
+    packages=["wechat_publisher"],
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",
